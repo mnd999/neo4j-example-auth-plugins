@@ -18,11 +18,20 @@
  */
 package org.neo4j.example.auth.plugin.integration;
 
-import com.neo4j.configuration.SecuritySettings;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import static com.neo4j.server.security.enterprise.auth.plugin.api.PredefinedRoles.ADMIN;
+import static com.neo4j.server.security.enterprise.auth.plugin.api.PredefinedRoles.READER;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Collections.singletonMap;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.junit.Assert.fail;
+import static org.neo4j.configuration.connectors.BoltConnector.DEFAULT_PORT;
+import static org.neo4j.example.auth.plugin.pki.PkiAuthPlugin.CRYPTO_ALGORITHM;
+import static org.neo4j.example.auth.plugin.pki.PkiAuthPlugin.DEFAULT_USER;
+import static org.neo4j.example.auth.plugin.pki.PkiAuthPlugin.ENCRYPTED_USERNAME_PARAMETER_NAME;
 
+import com.neo4j.configuration.SecuritySettings;
 import java.io.File;
 import java.io.FileWriter;
 import java.security.KeyPair;
@@ -36,7 +45,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import javax.crypto.Cipher;
-
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.neo4j.configuration.GraphDatabaseSettings;
 import org.neo4j.configuration.connectors.BoltConnector;
 import org.neo4j.configuration.helpers.SocketAddress;
@@ -57,212 +68,174 @@ import org.neo4j.test.extension.Inject;
 import org.neo4j.test.extension.testdirectory.TestDirectoryExtension;
 import org.neo4j.test.utils.TestDirectory;
 
-import static com.neo4j.server.security.enterprise.auth.plugin.api.PredefinedRoles.ADMIN;
-import static com.neo4j.server.security.enterprise.auth.plugin.api.PredefinedRoles.READER;
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.util.Collections.singletonMap;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.greaterThanOrEqualTo;
-import static org.junit.Assert.fail;
-import static org.neo4j.configuration.connectors.BoltConnector.DEFAULT_PORT;
-import static org.neo4j.example.auth.plugin.pki.PkiAuthPlugin.CRYPTO_ALGORITHM;
-import static org.neo4j.example.auth.plugin.pki.PkiAuthPlugin.DEFAULT_USER;
-import static org.neo4j.example.auth.plugin.pki.PkiAuthPlugin.ENCRYPTED_USERNAME_PARAMETER_NAME;
-
 @TestDirectoryExtension
-public class PkiAuthPluginIT
-{
+public class PkiAuthPluginIT {
     @Inject
     private TestDirectory testDirectory;
 
-    private static final Config config = Config.builder().withLogging( Logging.none() ).withoutEncryption().build();
+    private static final Config config =
+            Config.builder().withLogging(Logging.none()).withoutEncryption().build();
 
     private Neo4j databases;
     private KeyPair defaultUserKeys;
 
     @BeforeEach
-    public void setUp() throws Exception
-    {
+    public void setUp() throws Exception {
         defaultUserKeys = generateKeyPair();
 
-        PluginInProcessNeo4jBuilder builder = new PluginInProcessNeo4jBuilder( testDirectory.homePath() );
-        Neo4jLayout home = Neo4jLayout.of( builder.getRealServerPath() );
+        PluginInProcessNeo4jBuilder builder = new PluginInProcessNeo4jBuilder(testDirectory.homePath());
+        Neo4jLayout home = Neo4jLayout.of(builder.getRealServerPath());
 
         // Create directories and write out test config file
-        File configDir = new File( home.homeDirectory().toFile(), "conf" );
+        File configDir = new File(home.homeDirectory().toFile(), "conf");
         configDir.mkdirs();
 
-        try ( FileWriter fileWriter = new FileWriter( new File( configDir, "pki.conf" ) ) )
-        {
-            fileWriter.write( PkiAuthPlugin.DEFAULT_USER_PUBLIC_KEY_SETTING + "=" +
-                              publicKeyAsString( defaultUserKeys.getPublic() ) );
+        try (FileWriter fileWriter = new FileWriter(new File(configDir, "pki.conf"))) {
+            fileWriter.write(PkiAuthPlugin.DEFAULT_USER_PUBLIC_KEY_SETTING + "="
+                    + publicKeyAsString(defaultUserKeys.getPublic()));
         }
 
         // Start up server with authentication enabled
-        databases = builder
-                .withConfig( GraphDatabaseSettings.auth_enabled, true )
-                .withConfig( SecuritySettings.authentication_providers, List.of( "plugin-org.neo4j.example.auth.plugin.pki.PkiAuthPlugin" ) )
-                .withConfig( SecuritySettings.authorization_providers, List.of( "plugin-org.neo4j.example.auth.plugin.pki.PkiAuthPlugin" ) )
-                .withConfig( BoltConnector.enabled, true )
-                .withConfig( BoltConnector.listen_address, new SocketAddress( "localhost", DEFAULT_PORT ) )
-                .withProcedure( PkiProcedures.class )
+        databases = builder.withConfig(GraphDatabaseSettings.auth_enabled, true)
+                .withConfig(
+                        SecuritySettings.authentication_providers,
+                        List.of("plugin-org.neo4j.example.auth.plugin.pki.PkiAuthPlugin"))
+                .withConfig(
+                        SecuritySettings.authorization_providers,
+                        List.of("plugin-org.neo4j.example.auth.plugin.pki.PkiAuthPlugin"))
+                .withConfig(BoltConnector.enabled, true)
+                .withConfig(BoltConnector.listen_address, new SocketAddress("localhost", DEFAULT_PORT))
+                .withProcedure(PkiProcedures.class)
                 .build();
     }
 
     @AfterEach
-    public void tearDown()
-    {
+    public void tearDown() {
         PkiRepository.reset();
         if (databases != null) databases.close();
     }
 
     @Test
-    public void authenticateDefaultUser()
-    {
-        createNode( DEFAULT_USER, defaultUserKeys.getPrivate() );
+    public void authenticateDefaultUser() {
+        createNode(DEFAULT_USER, defaultUserKeys.getPrivate());
     }
 
     @Test
-    public void addUserPerformOperationAndRemoveUser()
-    {
+    public void addUserPerformOperationAndRemoveUser() {
         String testUser = "testUser";
-        PrivateKey testUserPrivateKey = addNewUser( defaultUserKeys.getPrivate(), testUser, ADMIN );
-        createNode( testUser, testUserPrivateKey );
+        PrivateKey testUserPrivateKey = addNewUser(defaultUserKeys.getPrivate(), testUser, ADMIN);
+        createNode(testUser, testUserPrivateKey);
 
-        removeUser( defaultUserKeys.getPrivate(), testUser );
+        removeUser(defaultUserKeys.getPrivate(), testUser);
 
-        try
-        {
-            createNode( testUser, testUserPrivateKey );
-            fail( "Should not be possible to create node using removed user" );
-        }
-        catch ( Exception e )
-        {
+        try {
+            createNode(testUser, testUserPrivateKey);
+            fail("Should not be possible to create node using removed user");
+        } catch (Exception e) {
             // expected
         }
 
-        createNode( DEFAULT_USER, defaultUserKeys.getPrivate() );
+        createNode(DEFAULT_USER, defaultUserKeys.getPrivate());
     }
 
     @Test
-    public void createdReaderUserNotAbleToWrite()
-    {
-        createNode( DEFAULT_USER, defaultUserKeys.getPrivate() );
+    public void createdReaderUserNotAbleToWrite() {
+        createNode(DEFAULT_USER, defaultUserKeys.getPrivate());
 
         String testUser = "testUser";
-        PrivateKey testUserPrivateKey = addNewUser( defaultUserKeys.getPrivate(), testUser, READER );
-        readNodes( testUser, testUserPrivateKey );
+        PrivateKey testUserPrivateKey = addNewUser(defaultUserKeys.getPrivate(), testUser, READER);
+        readNodes(testUser, testUserPrivateKey);
 
-        try
-        {
-            createNode( testUser, testUserPrivateKey );
-            fail( "Should not be possible to create node using reader user" );
-        }
-        catch ( Exception e )
-        {
+        try {
+            createNode(testUser, testUserPrivateKey);
+            fail("Should not be possible to create node using reader user");
+        } catch (Exception e) {
             // expected
         }
     }
 
-    private PrivateKey addNewUser( PrivateKey defaultUserPrivateKey, String username, String... roles )
-    {
+    private PrivateKey addNewUser(PrivateKey defaultUserPrivateKey, String username, String... roles) {
         KeyPair newUserKeyPair = generateKeyPair();
 
-        AuthToken authToken = pkiAuthToken( DEFAULT_USER, defaultUserPrivateKey );
-        try ( Driver driver = GraphDatabase.driver( databases.boltURI(), authToken, config );
-                Session session = driver.session() )
-        {
+        AuthToken authToken = pkiAuthToken(DEFAULT_USER, defaultUserPrivateKey);
+        try (Driver driver = GraphDatabase.driver(databases.boltURI(), authToken, config);
+                Session session = driver.session()) {
             String query = "CALL addPkiUser($username, $key, $roles)";
 
-            Map<String,Object> params = new HashMap<>();
-            params.put( "username", username );
-            params.put( "key", publicKeyAsString( newUserKeyPair.getPublic() ) );
-            params.put( "roles", roles );
+            Map<String, Object> params = new HashMap<>();
+            params.put("username", username);
+            params.put("key", publicKeyAsString(newUserKeyPair.getPublic()));
+            params.put("roles", roles);
 
-            session.run( query, params ).consume();
+            session.run(query, params).consume();
         }
 
         return newUserKeyPair.getPrivate();
     }
 
-    private void removeUser( PrivateKey defaultUserPrivateKey, String username )
-    {
-        AuthToken authToken = pkiAuthToken( DEFAULT_USER, defaultUserPrivateKey );
-        try ( Driver driver = GraphDatabase.driver( databases.boltURI(), authToken, config );
-                Session session = driver.session() )
-        {
+    private void removeUser(PrivateKey defaultUserPrivateKey, String username) {
+        AuthToken authToken = pkiAuthToken(DEFAULT_USER, defaultUserPrivateKey);
+        try (Driver driver = GraphDatabase.driver(databases.boltURI(), authToken, config);
+                Session session = driver.session()) {
             String query = "call removePkiUser($username)";
-            Map<String,Object> params = singletonMap( "username", username );
+            Map<String, Object> params = singletonMap("username", username);
 
-            session.run( query, params ).consume();
+            session.run(query, params).consume();
         }
     }
 
-    private void createNode( String username, PrivateKey privateKey )
-    {
-        AuthToken authToken = pkiAuthToken( username, privateKey );
+    private void createNode(String username, PrivateKey privateKey) {
+        AuthToken authToken = pkiAuthToken(username, privateKey);
 
-        try ( Driver driver = GraphDatabase.driver( databases.boltURI(), authToken, config );
-                Session session = driver.session() )
-        {
+        try (Driver driver = GraphDatabase.driver(databases.boltURI(), authToken, config);
+                Session session = driver.session()) {
             String nodeName = UUID.randomUUID().toString();
-            session.run( "CREATE ({name: '" + nodeName + "'})" ).consume();
-            Value value = session.run( "MATCH (n {name: '" + nodeName + "'}) RETURN count(n)" ).single().get( 0 );
-            assertThat( value.asLong(), equalTo( 1L ) );
+            session.run("CREATE ({name: '" + nodeName + "'})").consume();
+            Value value = session.run("MATCH (n {name: '" + nodeName + "'}) RETURN count(n)")
+                    .single()
+                    .get(0);
+            assertThat(value.asLong(), equalTo(1L));
         }
     }
 
-    private void readNodes( String username, PrivateKey privateKey )
-    {
-        AuthToken authToken = pkiAuthToken( username, privateKey );
+    private void readNodes(String username, PrivateKey privateKey) {
+        AuthToken authToken = pkiAuthToken(username, privateKey);
 
-        try ( Driver driver = GraphDatabase.driver( databases.boltURI(), authToken, config );
-                Session session = driver.session() )
-        {
-            Value value = session.run( "MATCH (n) RETURN count(n)" ).single().get( 0 );
-            assertThat( value.asLong(), greaterThanOrEqualTo( 1L ) );
+        try (Driver driver = GraphDatabase.driver(databases.boltURI(), authToken, config);
+                Session session = driver.session()) {
+            Value value = session.run("MATCH (n) RETURN count(n)").single().get(0);
+            assertThat(value.asLong(), greaterThanOrEqualTo(1L));
         }
     }
 
-    private static AuthToken pkiAuthToken( String username, PrivateKey privateKey )
-    {
-        String encryptedUsername = encrypt( privateKey, username );
-        Map<String,Object> authParams = singletonMap( ENCRYPTED_USERNAME_PARAMETER_NAME, encryptedUsername );
-        return AuthTokens.custom( username, "", "", "", authParams );
+    private static AuthToken pkiAuthToken(String username, PrivateKey privateKey) {
+        String encryptedUsername = encrypt(privateKey, username);
+        Map<String, Object> authParams = singletonMap(ENCRYPTED_USERNAME_PARAMETER_NAME, encryptedUsername);
+        return AuthTokens.custom(username, "", "", "", authParams);
     }
 
-    private static KeyPair generateKeyPair()
-    {
-        try
-        {
-            KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance( CRYPTO_ALGORITHM );
-            keyPairGenerator.initialize( 2048 );
+    private static KeyPair generateKeyPair() {
+        try {
+            KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(CRYPTO_ALGORITHM);
+            keyPairGenerator.initialize(2048);
             return keyPairGenerator.generateKeyPair();
-        }
-        catch ( NoSuchAlgorithmException e )
-        {
-            throw new RuntimeException( e );
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
         }
     }
 
-    private static String encrypt( PrivateKey privateKey, String text )
-    {
-        try
-        {
-            Cipher rsa = Cipher.getInstance( CRYPTO_ALGORITHM );
-            rsa.init( Cipher.ENCRYPT_MODE, privateKey );
-            byte[] bytes = rsa.doFinal( text.getBytes( UTF_8 ) );
-            return Base64.getEncoder().encodeToString( bytes );
-        }
-        catch ( Exception e )
-        {
-            throw new RuntimeException( e );
+    private static String encrypt(PrivateKey privateKey, String text) {
+        try {
+            Cipher rsa = Cipher.getInstance(CRYPTO_ALGORITHM);
+            rsa.init(Cipher.ENCRYPT_MODE, privateKey);
+            byte[] bytes = rsa.doFinal(text.getBytes(UTF_8));
+            return Base64.getEncoder().encodeToString(bytes);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
-    private static String publicKeyAsString( PublicKey publicKey )
-    {
-        return Base64.getEncoder().encodeToString( publicKey.getEncoded() );
+    private static String publicKeyAsString(PublicKey publicKey) {
+        return Base64.getEncoder().encodeToString(publicKey.getEncoded());
     }
 }

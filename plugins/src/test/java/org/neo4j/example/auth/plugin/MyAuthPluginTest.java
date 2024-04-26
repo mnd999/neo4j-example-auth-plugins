@@ -18,34 +18,30 @@
  */
 package org.neo4j.example.auth.plugin;
 
-import org.junit.jupiter.api.Test;
-
-import java.nio.file.Paths;
-
-import com.neo4j.server.security.enterprise.auth.plugin.api.AuthProviderOperations;
-
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-public class MyAuthPluginTest
-{
+import com.neo4j.server.security.enterprise.auth.plugin.api.AuthProviderOperations;
+import java.nio.file.Paths;
+import org.junit.jupiter.api.Test;
+
+public class MyAuthPluginTest {
     @Test
-    public void shouldLogErrorOnNonExistingConfigFile()
-    {
+    public void shouldLogErrorOnNonExistingConfigFile() {
         // Given
         MyAuthPlugin plugin = new MyAuthPlugin();
-        AuthProviderOperations api = mock( AuthProviderOperations.class );
-        AuthProviderOperations.Log log = mock( AuthProviderOperations.Log.class );
+        AuthProviderOperations api = mock(AuthProviderOperations.class);
+        AuthProviderOperations.Log log = mock(AuthProviderOperations.Log.class);
 
-        when( api.neo4jHome() ).thenReturn( Paths.get( "" ) );
-        when( api.log() ).thenReturn( log );
+        when(api.neo4jHome()).thenReturn(Paths.get(""));
+        when(api.log()).thenReturn(log);
 
         // When
-        plugin.initialize( api );
+        plugin.initialize(api);
 
         // Then
-        verify( log ).error( startsWith( "Failed to load config file" ) );
+        verify(log).error(startsWith("Failed to load config file"));
     }
 }

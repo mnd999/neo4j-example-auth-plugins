@@ -18,6 +18,12 @@
  */
 package org.neo4j.example.auth.plugin;
 
+import com.neo4j.server.security.enterprise.auth.plugin.api.AuthProviderOperations;
+import com.neo4j.server.security.enterprise.auth.plugin.api.AuthToken;
+import com.neo4j.server.security.enterprise.auth.plugin.api.AuthenticationException;
+import com.neo4j.server.security.enterprise.auth.plugin.api.PredefinedRoles;
+import com.neo4j.server.security.enterprise.auth.plugin.spi.AuthInfo;
+import com.neo4j.server.security.enterprise.auth.plugin.spi.AuthPlugin;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,76 +32,56 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Properties;
 
-import com.neo4j.server.security.enterprise.auth.plugin.api.AuthProviderOperations;
-import com.neo4j.server.security.enterprise.auth.plugin.api.AuthToken;
-import com.neo4j.server.security.enterprise.auth.plugin.api.AuthenticationException;
-import com.neo4j.server.security.enterprise.auth.plugin.api.PredefinedRoles;
-import com.neo4j.server.security.enterprise.auth.plugin.spi.AuthInfo;
-import com.neo4j.server.security.enterprise.auth.plugin.spi.AuthPlugin;
-
-public class MyAuthPlugin extends AuthPlugin.Adapter
-{
+public class MyAuthPlugin extends AuthPlugin.Adapter {
     private AuthProviderOperations api;
 
     @Override
-    public AuthInfo authenticateAndAuthorize( AuthToken authToken ) throws AuthenticationException
-    {
+    public AuthInfo authenticateAndAuthorize(AuthToken authToken) throws AuthenticationException {
         String username = authToken.principal();
         char[] password = authToken.credentials();
 
-        api.log().info( "Log in attempted for user '" + username + "'.");
+        api.log().info("Log in attempted for user '" + username + "'.");
 
-        if ( username != null && password != null )
-        {
-            if ( username.equals( "moraeus" ) && Arrays.equals( password, "suearom".toCharArray() ) )
-            {
-                api.log().info( "Successful log in. Welcome Kalle Moraeus! You are granted admin permissions." );
-                return AuthInfo.of( "moraeus", Collections.singleton( PredefinedRoles.ADMIN ) );
-            }
-            else if ( username.equals( "neo4j" ) && Arrays.equals( password, "neo4j".toCharArray() ) )
-            {
-                api.log().info( "Successful log in. You are granted reader permissions." );
-                return AuthInfo.of( "neo4j", Collections.singleton( PredefinedRoles.READER ) );
+        if (username != null && password != null) {
+            if (username.equals("moraeus") && Arrays.equals(password, "suearom".toCharArray())) {
+                api.log().info("Successful log in. Welcome Kalle Moraeus! You are granted admin permissions.");
+                return AuthInfo.of("moraeus", Collections.singleton(PredefinedRoles.ADMIN));
+            } else if (username.equals("neo4j") && Arrays.equals(password, "neo4j".toCharArray())) {
+                api.log().info("Successful log in. You are granted reader permissions.");
+                return AuthInfo.of("neo4j", Collections.singleton(PredefinedRoles.READER));
             }
         }
         return null;
     }
 
     @Override
-    public void initialize( AuthProviderOperations authProviderOperations )
-    {
+    public void initialize(AuthProviderOperations authProviderOperations) {
         api = authProviderOperations;
-        api.log().info( "initialized!" );
+        api.log().info("initialized!");
 
         loadConfig();
     }
 
-    private void loadConfig()
-    {
+    private void loadConfig() {
         Path configFile = resolveConfigFilePath();
-        Properties properties = loadProperties( configFile );
+        Properties properties = loadProperties(configFile);
 
-        String myProperty = properties.getProperty( "my.auth.property" );
-        api.log().info( "my.auth.property=" + myProperty );
+        String myProperty = properties.getProperty("my.auth.property");
+        api.log().info("my.auth.property=" + myProperty);
     }
 
-    private Path resolveConfigFilePath()
-    {
-        return api.neo4jHome().resolve( "conf/MyAuthPlugin.conf" );
+    private Path resolveConfigFilePath() {
+        return api.neo4jHome().resolve("conf/MyAuthPlugin.conf");
     }
 
-    private Properties loadProperties( Path configFile )
-    {
+    private Properties loadProperties(Path configFile) {
         Properties properties = new Properties();
 
-        try
-        {
-            InputStream inputStream = new FileInputStream( configFile.toFile() );
-            properties.load( inputStream );
-        }
-        catch ( IOException e )
-        {
-            api.log().error( "Failed to load config file '" + configFile.toString() + "'." );
+        try {
+            InputStream inputStream = new FileInputStream(configFile.toFile());
+            properties.load(inputStream);
+        } catch (IOException e) {
+            api.log().error("Failed to load config file '" + configFile.toString() + "'.");
         }
         return properties;
     }

@@ -19,24 +19,19 @@
 package org.neo4j.example.auth.plugin.integration;
 
 import com.neo4j.harness.internal.EnterpriseInProcessNeo4jBuilder;
-
 import java.lang.reflect.Field;
 import java.nio.file.Path;
-
 import org.neo4j.harness.internal.AbstractInProcessNeo4jBuilder;
 
-public class PluginInProcessNeo4jBuilder extends EnterpriseInProcessNeo4jBuilder
-{
-    public PluginInProcessNeo4jBuilder( Path workingDir )
-    {
-        super( workingDir );
+public class PluginInProcessNeo4jBuilder extends EnterpriseInProcessNeo4jBuilder {
+    public PluginInProcessNeo4jBuilder(Path workingDir) {
+        super(workingDir);
     }
 
-    public Path getRealServerPath() throws Exception
-    {
+    public Path getRealServerPath() throws Exception {
         // Get around the test harness always creating a random directory name and not telling us what it is
-        Field field = AbstractInProcessNeo4jBuilder.class.getDeclaredField( "serverFolder" );
-        field.setAccessible( true );
-        return (Path) field.get( this );
+        Field field = AbstractInProcessNeo4jBuilder.class.getDeclaredField("serverFolder");
+        field.setAccessible(true);
+        return (Path) field.get(this);
     }
 }
