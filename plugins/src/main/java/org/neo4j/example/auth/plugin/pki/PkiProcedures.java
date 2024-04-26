@@ -19,23 +19,19 @@
 package org.neo4j.example.auth.plugin.pki;
 
 import java.util.List;
-
 import org.neo4j.procedure.Mode;
 import org.neo4j.procedure.Name;
 import org.neo4j.procedure.Procedure;
 
-public class PkiProcedures
-{
-    @Procedure( name = "addPkiUser", mode = Mode.DBMS )
-    public void addPkiUser( @Name( "username" ) String username, @Name( "publicKey" ) String publicKey,
-            @Name( "roles" ) List<String> roles )
-    {
-        PkiRepository.add( username, publicKey, roles.toArray( new String[0] ) );
+public class PkiProcedures {
+    @Procedure(name = "addPkiUser", mode = Mode.DBMS)
+    public void addPkiUser(
+            @Name("username") String username, @Name("publicKey") String publicKey, @Name("roles") List<String> roles) {
+        PkiRepository.add(username, publicKey, roles.toArray(new String[0]));
     }
 
-    @Procedure( name = "removePkiUser", mode = Mode.DBMS )
-    public void removePkiUser( @Name( "username" ) String username )
-    {
-        PkiRepository.remove( username );
+    @Procedure(name = "removePkiUser", mode = Mode.DBMS)
+    public void removePkiUser(@Name("username") String username) {
+        PkiRepository.remove(username);
     }
 }

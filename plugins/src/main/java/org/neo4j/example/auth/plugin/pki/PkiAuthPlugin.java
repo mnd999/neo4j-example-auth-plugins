@@ -18,6 +18,13 @@
  */
 package org.neo4j.example.auth.plugin.pki;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
+import com.neo4j.server.security.enterprise.auth.plugin.api.AuthProviderOperations;
+import com.neo4j.server.security.enterprise.auth.plugin.api.AuthToken;
+import com.neo4j.server.security.enterprise.auth.plugin.api.PredefinedRoles;
+import com.neo4j.server.security.enterprise.auth.plugin.spi.AuthInfo;
+import com.neo4j.server.security.enterprise.auth.plugin.spi.AuthPlugin;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -30,83 +37,61 @@ import java.util.Objects;
 import java.util.Properties;
 import javax.crypto.Cipher;
 
-import com.neo4j.server.security.enterprise.auth.plugin.api.AuthProviderOperations;
-import com.neo4j.server.security.enterprise.auth.plugin.api.AuthToken;
-import com.neo4j.server.security.enterprise.auth.plugin.api.AuthenticationException;
-import com.neo4j.server.security.enterprise.auth.plugin.api.PredefinedRoles;
-import com.neo4j.server.security.enterprise.auth.plugin.spi.AuthInfo;
-import com.neo4j.server.security.enterprise.auth.plugin.spi.AuthPlugin;
-
-import static java.nio.charset.StandardCharsets.UTF_8;
-
-public class PkiAuthPlugin extends AuthPlugin.Adapter
-{
+public class PkiAuthPlugin extends AuthPlugin.Adapter {
     public static final String CRYPTO_ALGORITHM = "RSA";
     public static final String DEFAULT_USER_PUBLIC_KEY_SETTING = "dbms.security.pki.default.public.key";
     public static final String ENCRYPTED_USERNAME_PARAMETER_NAME = "encryptedUsername";
     public static final String DEFAULT_USER = "neo4j";
 
     @Override
-    public void initialize( AuthProviderOperations authProviderOperations )
-    {
-        Path configPath = authProviderOperations.neo4jHome().resolve( "conf/pki.conf" );
+    public void initialize(AuthProviderOperations authProviderOperations) {
+        Path configPath = authProviderOperations.neo4jHome().resolve("conf/pki.conf");
 
         Properties properties = new Properties();
-        try ( BufferedReader reader = Files.newBufferedReader( configPath ) )
-        {
-            properties.load( reader );
-        }
-        catch ( IOException e )
-        {
-            throw new IllegalStateException( "Failed loading properties: " + e.getMessage(), e );
+        try (BufferedReader reader = Files.newBufferedReader(configPath)) {
+            properties.load(reader);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed loading properties: " + e.getMessage(), e);
         }
 
-        String defaultUserPublicKeyString = (String) properties.get( DEFAULT_USER_PUBLIC_KEY_SETTING );
-        if ( defaultUserPublicKeyString == null )
-        {
-            throw new IllegalStateException( "Public key for default user '" + DEFAULT_USER + "' is not set" );
+        String defaultUserPublicKeyString = (String) properties.get(DEFAULT_USER_PUBLIC_KEY_SETTING);
+        if (defaultUserPublicKeyString == null) {
+            throw new IllegalStateException("Public key for default user '" + DEFAULT_USER + "' is not set");
         }
 
-        PkiRepository.add( DEFAULT_USER, defaultUserPublicKeyString, PredefinedRoles.ADMIN );
+        PkiRepository.add(DEFAULT_USER, defaultUserPublicKeyString, PredefinedRoles.ADMIN);
     }
 
     @Override
-    public AuthInfo authenticateAndAuthorize( AuthToken authToken )
-    {
+    public AuthInfo authenticateAndAuthorize(AuthToken authToken) {
         String username = authToken.principal();
-        Map<String,Object> parameters = authToken.parameters();
-        if ( parameters == null )
-        {
+        Map<String, Object> parameters = authToken.parameters();
+        if (parameters == null) {
             return null;
         }
 
-        String base64EncodedEncryptedUsername = (String) parameters.get( ENCRYPTED_USERNAME_PARAMETER_NAME );
-        if ( base64EncodedEncryptedUsername == null )
-        {
+        String base64EncodedEncryptedUsername = (String) parameters.get(ENCRYPTED_USERNAME_PARAMETER_NAME);
+        if (base64EncodedEncryptedUsername == null) {
             return null;
         }
 
-        byte[] encryptedUsernameBytes = Base64.getDecoder().decode( base64EncodedEncryptedUsername );
+        byte[] encryptedUsernameBytes = Base64.getDecoder().decode(base64EncodedEncryptedUsername);
 
-        UserInfo info = PkiRepository.infoFor( username );
+        UserInfo info = PkiRepository.infoFor(username);
         PublicKey publicKey = info.getPublicKey();
 
-        String decryptedUsername = decrypt( publicKey, encryptedUsernameBytes );
+        String decryptedUsername = decrypt(publicKey, encryptedUsernameBytes);
 
-        return Objects.equals( username, decryptedUsername ) ? AuthInfo.of( username, info.getRoles() ) : null;
+        return Objects.equals(username, decryptedUsername) ? AuthInfo.of(username, info.getRoles()) : null;
     }
 
-    private static String decrypt( Key decryptionKey, byte[] buffer )
-    {
-        try
-        {
-            Cipher rsa = Cipher.getInstance( CRYPTO_ALGORITHM );
-            rsa.init( Cipher.DECRYPT_MODE, decryptionKey );
-            return new String( rsa.doFinal( buffer ), UTF_8 );
-        }
-        catch ( Exception e )
-        {
-            throw new RuntimeException( e );
+    private static String decrypt(Key decryptionKey, byte[] buffer) {
+        try {
+            Cipher rsa = Cipher.getInstance(CRYPTO_ALGORITHM);
+            rsa.init(Cipher.DECRYPT_MODE, decryptionKey);
+            return new String(rsa.doFinal(buffer), UTF_8);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 }
